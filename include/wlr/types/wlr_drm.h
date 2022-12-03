@@ -10,6 +10,7 @@
 #define WLR_TYPES_WLR_DRM_H
 
 #include <wayland-server-protocol.h>
+#include <wlr/types/wlr_buffer.h>
 
 struct wlr_renderer;
 
