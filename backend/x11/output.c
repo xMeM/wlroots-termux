@@ -140,6 +140,9 @@ static void destroy_x11_buffer(struct wlr_x11_buffer *buffer) {
 	wl_list_remove(&buffer->buffer_destroy.link);
 	wl_list_remove(&buffer->link);
 	xcb_free_pixmap(buffer->x11->xcb, buffer->pixmap);
+	for (size_t i = 0; i < buffer->n_busy; i++) {
+		wlr_buffer_unlock(buffer->buffer);
+	}
 	free(buffer);
 }
 
@@ -263,6 +266,7 @@ static struct wlr_x11_buffer *get_or_create_x11_buffer(
 	wl_list_for_each(buffer, &output->buffers, link) {
 		if (buffer->buffer == wlr_buffer) {
 			wlr_buffer_lock(buffer->buffer);
+			buffer->n_busy++;
 			return buffer;
 		}
 	}
@@ -675,6 +679,8 @@ void handle_x11_present_event(struct wlr_x11_backend *x11,
 			return;
 		}
 
+		assert(buffer->n_busy > 0);
+		buffer->n_busy--;
 		wlr_buffer_unlock(buffer->buffer); // may destroy buffer
 		break;
 	case XCB_PRESENT_COMPLETE_NOTIFY:;
