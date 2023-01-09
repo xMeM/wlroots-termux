@@ -384,11 +384,30 @@ static void xsurface_set_net_wm_state(struct wlr_xwayland_surface *xsurface) {
 		i, property);
 }
 
+static void xsurface_unpair(struct wlr_xwayland_surface *surface,
+		bool destroy_role_object) {
+	if (surface->mapped) {
+		wl_signal_emit_mutable(&surface->events.unmap, surface);
+		surface->mapped = false;
+		xwm_set_net_client_list(surface->xwm);
+	}
+
+	// Make sure we're not on the unpaired surface list or we
+	// could be assigned a surface during surface creation that
+	// was mapped before this unmap request.
+	wl_list_remove(&surface->unpaired_link);
+	wl_list_init(&surface->unpaired_link);
+	surface->surface_id = 0;
+
+	if (destroy_role_object && surface->surface != NULL) {
+		wlr_surface_destroy_role_object(surface->surface);
+	}
+	surface->surface = NULL;
+}
+
 static void xwayland_surface_destroy(
 		struct wlr_xwayland_surface *xsurface) {
-	if (xsurface->surface != NULL) {
-		wlr_surface_destroy_role_object(xsurface->surface);
-	}
+	xsurface_unpair(xsurface, true);
 
 	wl_signal_emit_mutable(&xsurface->events.destroy, xsurface);
 
@@ -851,19 +870,7 @@ static void xwayland_surface_role_destroy(struct wlr_surface *wlr_surface) {
 	assert(wlr_surface->role == &xwayland_surface_role);
 	struct wlr_xwayland_surface *surface = wlr_surface->role_data;
 
-	if (surface->mapped) {
-		wl_signal_emit_mutable(&surface->events.unmap, surface);
-		surface->mapped = false;
-		xwm_set_net_client_list(surface->xwm);
-	}
-
-	// Make sure we're not on the unpaired surface list or we
-	// could be assigned a surface during surface creation that
-	// was mapped before this unmap request.
-	wl_list_remove(&surface->unpaired_link);
-	wl_list_init(&surface->unpaired_link);
-	surface->surface_id = 0;
-	surface->surface = NULL;
+	xsurface_unpair(surface, false);
 }
 
 static const struct wlr_surface_role xwayland_surface_role = {
@@ -1077,10 +1084,7 @@ static void xwm_handle_unmap_notify(struct wlr_xwm *xwm,
 		return;
 	}
 
-	if (xsurface->surface != NULL) {
-		wlr_surface_destroy_role_object(xsurface->surface);
-	}
-
+	xsurface_unpair(xsurface, true);
 	xsurface_set_wm_state(xsurface, XCB_ICCCM_WM_STATE_WITHDRAWN);
 }
 
