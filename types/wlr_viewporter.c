@@ -131,6 +131,19 @@ static void viewport_handle_resource_destroy(struct wl_resource *resource) {
 	viewport_destroy(viewport);
 }
 
+static bool check_src_buffer_bounds(const struct wlr_surface_state *state) {
+	int width = state->buffer_width / state->scale;
+	int height = state->buffer_height / state->scale;
+	if (state->transform & WL_OUTPUT_TRANSFORM_90) {
+		int tmp = width;
+		width = height;
+		height = tmp;
+	}
+
+	struct wlr_fbox box = state->viewport.src;
+	return box.x + box.width <= width && box.y + box.height <= height;
+}
+
 static void viewport_handle_surface_client_commit(struct wl_listener *listener,
 		void *data) {
 	struct wlr_viewport *viewport =
@@ -148,10 +161,7 @@ static void viewport_handle_surface_client_commit(struct wl_listener *listener,
 	}
 
 	if (state->viewport.has_src && state->buffer != NULL &&
-			(state->viewport.src.x + state->viewport.src.width >
-				state->buffer_width ||
-			state->viewport.src.y + state->viewport.src.height >
-				state->buffer_height)) {
+			!check_src_buffer_bounds(state)) {
 		wl_resource_post_error(viewport->resource, WP_VIEWPORT_ERROR_OUT_OF_BUFFER,
 			"source rectangle out of buffer bounds");
 		return;
