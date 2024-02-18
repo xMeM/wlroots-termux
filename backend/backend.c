@@ -36,6 +36,10 @@
 #include <wlr/backend/x11.h>
 #endif
 
+#if WLR_HAS_TERMUXGUI_BACKEND
+#include <wlr/backend/termuxgui.h>
+#endif
+
 #define WAIT_SESSION_TIMEOUT 10000 // ms
 
 void wlr_backend_init(struct wlr_backend *backend,
@@ -196,6 +200,26 @@ static struct wlr_backend *attempt_headless_backend(
 	return backend;
 }
 
+static struct wlr_backend *attempt_tgui_backend(
+		struct wl_display *display) {
+#if WLR_HAS_TERMUXGUI_BACKEND
+	struct wlr_backend *backend = wlr_tgui_backend_create(display);
+	if (backend == NULL) {
+		return NULL;
+	}
+
+	size_t outputs = parse_outputs_env("WLR_TGUI_OUTPUTS");
+	for (size_t i = 0; i < outputs; ++i) {
+		wlr_tgui_output_create(backend);
+	}
+
+	return backend;
+#else
+	wlr_log(WLR_ERROR, "Cannot create Termux:GUI backend: disabled at compile-time");
+	return NULL;
+#endif
+}
+
 static bool attempt_drm_backend(struct wl_display *display,
 		struct wlr_backend *backend, struct wlr_session *session) {
 #if WLR_HAS_DRM_BACKEND
@@ -264,6 +288,8 @@ static bool attempt_backend_by_name(struct wl_display *display,
 		backend = attempt_x11_backend(display, NULL);
 	} else if (strcmp(name, "headless") == 0) {
 		backend = attempt_headless_backend(display);
+	} else if (strcmp(name, "tgui") == 0) {
+		backend = attempt_tgui_backend(display);
 	} else if (strcmp(name, "drm") == 0 || strcmp(name, "libinput") == 0) {
 		// DRM and libinput need a session
 		if (*session_ptr == NULL) {
@@ -350,6 +376,12 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_display *display,
 		}
 
 		wlr_multi_backend_add(multi, x11_backend);
+		goto success;
+	}
+
+	struct wlr_backend *tgui_backend = attempt_tgui_backend(display);
+	if (tgui_backend) {
+		wlr_multi_backend_add(multi, tgui_backend);
 		goto success;
 	}
 

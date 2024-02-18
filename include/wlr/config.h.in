@@ -4,6 +4,7 @@
 #mesondefine WLR_HAS_DRM_BACKEND
 #mesondefine WLR_HAS_LIBINPUT_BACKEND
 #mesondefine WLR_HAS_X11_BACKEND
+#mesondefine WLR_HAS_TERMUXGUI_BACKEND
 
 #mesondefine WLR_HAS_GLES2_RENDERER
 #mesondefine WLR_HAS_VULKAN_RENDERER

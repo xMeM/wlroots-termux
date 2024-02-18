@@ -1,0 +1,10 @@
+BasedOnStyle: LLVM
+DisableFormat: false
+
+BinPackParameters: false
+IndentWidth: 4
+ColumnLimit: 98
+Cpp11BracedListStyle: false
+
+SpaceAfterCStyleCast: true
+SpaceBeforeCpp11BracedList: true

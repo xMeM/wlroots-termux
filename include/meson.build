@@ -8,6 +8,9 @@ endif
 if not features.get('libinput-backend')
 	exclude_files += 'backend/libinput.h'
 endif
+if not features.get('termuxgui-backend')
+	exclude_files += 'backend/termuxgui.h'
+endif
 if not features.get('x11-backend')
 	exclude_files += 'backend/x11.h'
 endif

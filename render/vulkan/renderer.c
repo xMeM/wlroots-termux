@@ -2862,6 +2862,11 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
 	// Do not use the drm_fd that was passed in: we should prefer the render
 	// node even if a primary node was provided
 	dev->drm_fd = vulkan_open_phdev_drm_fd(phdev);
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	if (dev->drm_fd < 0) {
+		dev->drm_fd = open("/dev/null", O_RDWR);
+	}
+#endif
 	if (dev->drm_fd < 0) {
 		vulkan_device_destroy(dev);
 		vulkan_instance_destroy(ini);

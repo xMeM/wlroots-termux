@@ -19,6 +19,11 @@
 #include "render/allocator/gbm.h"
 #endif
 
+#if WLR_HAS_TERMUXGUI_BACKEND
+#include "backend/multi.h"
+#include "backend/termuxgui.h"
+#endif
+
 void wlr_allocator_init(struct wlr_allocator *alloc,
 		const struct wlr_allocator_interface *impl, uint32_t buffer_caps) {
 	assert(impl && impl->destroy && impl->create_buffer);
@@ -147,8 +152,31 @@ struct wlr_allocator *allocator_autocreate_with_drm_fd(
 	return NULL;
 }
 
+#if WLR_HAS_TERMUXGUI_BACKEND
+static void backend_get_allocator(struct wlr_backend *backend, void *data) {
+	struct wlr_allocator **allocator = data;
+	if (wlr_backend_is_tgui(backend)) {
+		struct wlr_tgui_backend *tgui_backend = tgui_backend_from_backend(backend);
+		*allocator = wlr_tgui_backend_get_allocator(tgui_backend);
+	}
+}
+#endif
+
 struct wlr_allocator *wlr_allocator_autocreate(struct wlr_backend *backend,
 		struct wlr_renderer *renderer) {
+#if WLR_HAS_TERMUXGUI_BACKEND
+	struct wlr_allocator *allocator = NULL;
+	if (wlr_backend_is_multi(backend)) {
+		wlr_multi_for_each_backend(backend, backend_get_allocator, &allocator);
+	} else {
+		backend_get_allocator(backend, &allocator);
+	}
+
+	if (allocator) {
+		return allocator;
+	}
+#endif
+
 	// Note, drm_fd may be negative if unavailable
 	int drm_fd = wlr_backend_get_drm_fd(backend);
 	if (drm_fd < 0) {

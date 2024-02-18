@@ -345,6 +345,11 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 		}
 
 		if (!has_drm_props) {
+#if defined(__ANDROID__) && defined(__TERMUX__)
+			if (driver_props.driverID == VK_DRIVER_ID_MESA_TURNIP) {
+				return phdev;
+			}
+#endif
 			wlr_log(WLR_DEBUG, "  Ignoring physical device \"%s\": "
 				"VK_EXT_physical_device_drm not supported",
 				phdev_props.deviceName);
