@@ -1816,6 +1816,9 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
 		return NULL;
 	}
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	dev->drm_fd = -1;
+#else
 	// We duplicate it so it's not closed while we still need it.
 	dev->drm_fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 0);
 	if (dev->drm_fd < 0) {
@@ -1824,6 +1827,7 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
 		vulkan_instance_destroy(ini);
 		return NULL;
 	}
+#endif
 
 	return vulkan_renderer_create_for_device(dev);
 }

@@ -32,6 +32,10 @@
 #include <wlr/backend/x11.h>
 #endif
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+#include <wlr/backend/termuxgui.h>
+#endif
+
 #define WAIT_SESSION_TIMEOUT 10000 // ms
 
 void wlr_backend_init(struct wlr_backend *backend,
@@ -203,6 +207,23 @@ static struct wlr_backend *attempt_headless_backend(
 	return backend;
 }
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+static struct wlr_backend *attempt_tgui_backend(
+		struct wl_display *display) {
+	struct wlr_backend *backend = wlr_tgui_backend_create(display);
+	if (backend == NULL) {
+		return NULL;
+	}
+
+	size_t outputs = parse_outputs_env("WLR_TGUI_OUTPUTS");
+	for (size_t i = 0; i < outputs; ++i) {
+		wlr_tgui_add_output(backend);
+	}
+
+	return backend;
+}
+#endif
+
 #if WLR_HAS_DRM_BACKEND
 static struct wlr_backend *attempt_drm_backend(struct wl_display *display,
 		struct wlr_backend *backend, struct wlr_session *session) {
@@ -255,6 +276,10 @@ static bool attempt_backend_by_name(struct wl_display *display,
 #endif
 	} else if (strcmp(name, "headless") == 0) {
 		backend = attempt_headless_backend(display);
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	} else if (strcmp(name, "tgui") == 0) {
+		backend = attempt_tgui_backend(display);
+#endif
 	} else if (strcmp(name, "drm") == 0 || strcmp(name, "libinput") == 0) {
 		// DRM and libinput need a session
 		if (multi->session == NULL) {
@@ -342,6 +367,18 @@ struct wlr_backend *wlr_backend_autocreate(struct wl_display *display) {
 		}
 
 		wlr_multi_backend_add(backend, x11_backend);
+		return backend;
+	}
+#endif
+
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	{
+		struct wlr_backend *tgui_backend = attempt_tgui_backend(display);
+		if (!tgui_backend) {
+			goto error;
+		}
+
+		wlr_multi_backend_add(backend, tgui_backend);
 		return backend;
 	}
 #endif

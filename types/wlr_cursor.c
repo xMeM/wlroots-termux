@@ -451,7 +451,9 @@ static void handle_pointer_motion_absolute(struct wl_listener *listener,
 	struct wlr_output *output =
 		get_mapped_output(device);
 	if (output) {
+#if !defined (__ANDROID__) && !defined (__TERMUX__)
 		apply_output_transform(&event->x, &event->y, output->transform);
+#endif
 	}
 	wl_signal_emit_mutable(&device->cursor->events.motion_absolute, event);
 }

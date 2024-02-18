@@ -66,6 +66,10 @@ static const struct format formats[] = {
 	{WL_SHM_FORMAT_ABGR8888, false},
 };
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+#include "../include/util/shm.h"
+#endif
+
 static struct wl_buffer *create_shm_buffer(enum wl_shm_format fmt,
 		int width, int height, int stride, void **data_out) {
 	int size = stride * height;

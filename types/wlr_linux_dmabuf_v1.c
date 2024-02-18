@@ -635,6 +635,7 @@ static bool feedback_tranche_init_with_renderer(
 		struct wlr_renderer *renderer) {
 	memset(tranche, 0, sizeof(*tranche));
 
+#if !defined (__ANDROID__) && !defined (__TERMUX__)
 	int drm_fd = wlr_renderer_get_drm_fd(renderer);
 	if (drm_fd < 0) {
 		wlr_log(WLR_ERROR, "Failed to get DRM FD from renderer");
@@ -647,6 +648,7 @@ static bool feedback_tranche_init_with_renderer(
 		return false;
 	}
 	tranche->target_device = stat.st_rdev;
+#endif
 
 	tranche->formats = wlr_renderer_get_dmabuf_texture_formats(renderer);
 	if (tranche->formats == NULL) {

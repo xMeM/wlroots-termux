@@ -9,6 +9,10 @@
 #include <wayland-client.h>
 #include "idle-client-protocol.h"
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+#define pthread_cancel(x) pthread_kill(x, SIGKILL)
+#endif
+
 static struct org_kde_kwin_idle *idle_manager = NULL;
 static struct wl_seat *seat = NULL;
 static uint32_t timeout = 0, simulate_activity_timeout = 0, close_timeout = 0;

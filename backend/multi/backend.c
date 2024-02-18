@@ -217,6 +217,13 @@ bool wlr_multi_backend_add(struct wlr_backend *_multi,
 	wl_signal_add(&backend->events.new_output, &sub->new_output);
 	sub->new_output.notify = new_output_reemit;
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	if (multi->backend.allocator == NULL &&
+		backend->allocator != NULL) {
+		multi->backend.allocator = backend->allocator;
+	}
+#endif
+
 	wl_signal_emit_mutable(&multi->events.backend_add, backend);
 	return true;
 }

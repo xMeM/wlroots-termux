@@ -28,6 +28,9 @@ struct wlr_backend {
 		/** Raised when new outputs are added, passed the struct wlr_output */
 		struct wl_signal new_output;
 	} events;
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	struct wlr_allocator *allocator;
+#endif
 };
 
 /**

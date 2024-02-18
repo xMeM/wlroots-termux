@@ -17,5 +17,6 @@ endforeach
 subdir('multi')
 subdir('wayland')
 subdir('headless')
+subdir('termuxgui')
 
 subdir('session')

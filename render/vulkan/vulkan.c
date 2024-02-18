@@ -139,7 +139,7 @@ struct wlr_vk_instance *vulkan_instance_create(bool debug) {
 	};
 
 	const char *layers[] = {
-		"VK_LAYER_KHRONOS_validation",
+		// "VK_LAYER_KHRONOS_validation",
 		// "VK_LAYER_RENDERDOC_Capture",
 		// "VK_LAYER_live_introspection",
 	};
@@ -278,11 +278,13 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 		return VK_NULL_HANDLE;
 	}
 
+#if !defined (__ANDROID__) && !defined (__TERMUX__)
 	struct stat drm_stat = {0};
 	if (fstat(drm_fd, &drm_stat) != 0) {
 		wlr_log_errno(WLR_ERROR, "fstat failed");
 		return VK_NULL_HANDLE;
 	}
+#endif
 
 	for (uint32_t i = 0; i < num_phdevs; ++i) {
 		VkPhysicalDevice phdev = phdevs[i];
@@ -349,6 +351,7 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 			wlr_log(WLR_INFO, "  Driver name: %s (%s)", driver_props.driverName, driver_props.driverInfo);
 		}
 
+#if !defined (__ANDROID__) && !defined (__TERMUX__)
 		if (!has_drm_props) {
 			wlr_log(WLR_DEBUG, "  Ignoring physical device \"%s\": "
 				"VK_EXT_physical_device_drm not supported",
@@ -364,6 +367,9 @@ VkPhysicalDevice vulkan_find_drm_phdev(struct wlr_vk_instance *ini, int drm_fd) 
 				phdev_props.deviceName);
 			return phdev;
 		}
+#else
+		return phdev;
+#endif
 	}
 
 	return VK_NULL_HANDLE;
