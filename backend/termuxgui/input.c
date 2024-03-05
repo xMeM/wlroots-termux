@@ -179,6 +179,7 @@ const struct {
     { AKEYCODE_ENTER, KEY_ENTER },   { AKEYCODE_SPACE, KEY_SPACE },
     { AKEYCODE_DEL, KEY_BACKSPACE }, { AKEYCODE_SHIFT_LEFT, KEY_LEFTSHIFT },
     { AKEYCODE_COMMA, KEY_COMMA },   { AKEYCODE_PERIOD, KEY_DOT },
+    { AKEYCODE_MINUS, KEY_MINUS },
 };
 
 static int android_keycode_to_linux(int code) {

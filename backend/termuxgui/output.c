@@ -74,12 +74,13 @@ static bool output_commit(struct wlr_output *wlr_output,
             struct wlr_tgui_buffer *buffer =
                 tgui_buffer_from_buffer(state->buffer);
 
-            pthread_mutex_lock(&output->queue.present.lock);
+            pthread_mutex_lock(&output->present_queue.pending.lock);
             wlr_buffer_lock(&buffer->wlr_buffer);
-            wl_list_insert(&output->queue.present.buffers, &buffer->link);
-            pthread_mutex_unlock(&output->queue.present.lock);
+            wl_list_insert(&output->present_queue.pending.buffers,
+                           &buffer->link);
+            pthread_mutex_unlock(&output->present_queue.pending.lock);
 
-            pthread_cond_broadcast(&output->queue_thread_cond);
+            pthread_cond_broadcast(&output->present_queue.thread_cond);
         }
     }
 
@@ -89,33 +90,35 @@ static bool output_commit(struct wlr_output *wlr_output,
 static void output_destroy(struct wlr_output *wlr_output) {
     struct wlr_tgui_output *output = tgui_output_from_output(wlr_output);
     wl_list_remove(&output->link);
-    wl_event_source_remove(output->queue_event_source);
+    wl_event_source_remove(output->present_queue.idle_event_source);
 
     wlr_pointer_finish(&output->pointer);
     wlr_keyboard_finish(&output->keyboard);
     tgui_activity_finish(output->backend->conn, output->tgui_activity);
 
-    output->queue.present.state = 1;
-    pthread_cond_broadcast(&output->queue_thread_cond);
-    pthread_join(output->queue_thread, NULL);
+    pthread_mutex_lock(&output->present_queue.thread_lock);
+    output->present_queue.state = TGUI_ERR_ACTIVITY_DESTROYED;
+    pthread_mutex_unlock(&output->present_queue.thread_lock);
+    pthread_cond_broadcast(&output->present_queue.thread_cond);
+    pthread_join(output->present_queue.thread, NULL);
 
     struct wlr_tgui_buffer *buffer, *buffer_tmp;
-    wl_list_for_each_safe(buffer, buffer_tmp, &output->queue.present.buffers,
-                          link) {
+    wl_list_for_each_safe(buffer, buffer_tmp,
+                          &output->present_queue.pending.buffers, link) {
         wl_list_remove(&buffer->link);
         wlr_buffer_unlock(&buffer->wlr_buffer);
     }
-    wl_list_for_each_safe(buffer, buffer_tmp, &output->queue.idle.buffers,
-                          link) {
+    wl_list_for_each_safe(buffer, buffer_tmp,
+                          &output->present_queue.idle.buffers, link) {
         wl_list_remove(&buffer->link);
         wlr_buffer_unlock(&buffer->wlr_buffer);
     }
 
-    pthread_mutex_destroy(&output->queue.present.lock);
-    pthread_mutex_destroy(&output->queue.idle.lock);
-    pthread_mutex_destroy(&output->queue_thread_lock);
-    pthread_cond_destroy(&output->queue_thread_cond);
-    close(output->queue_event_fd);
+    pthread_mutex_destroy(&output->present_queue.pending.lock);
+    pthread_mutex_destroy(&output->present_queue.idle.lock);
+    pthread_mutex_destroy(&output->present_queue.thread_lock);
+    pthread_cond_destroy(&output->present_queue.thread_cond);
+    close(output->present_queue.idle_event_fd);
     free(output);
 }
 
@@ -157,11 +160,12 @@ int handle_activity_event(tgui_event *e, struct wlr_tgui_output *output) {
     }
     case TGUI_EVENT_START:
     case TGUI_EVENT_RESUME: {
-        output->tgui_activity_state = 1;
+        output->tgui_activity_is_foreground = true;
+        pthread_cond_broadcast(&output->present_queue.thread_cond);
         break;
     }
     case TGUI_EVENT_PAUSE: {
-        output->tgui_activity_state = 0;
+        output->tgui_activity_is_foreground = false;
         break;
     }
     case TGUI_EVENT_DESTROY: {
@@ -198,48 +202,45 @@ int handle_activity_event(tgui_event *e, struct wlr_tgui_output *output) {
     return 0;
 }
 
-static void *queue_present_thread(void *data) {
+static void *present_queue_thread(void *data) {
     struct wlr_tgui_output *output = data;
-    pthread_mutex_lock(&output->queue_thread_lock);
-    while (output->queue.present.state == 0) {
-        pthread_mutex_lock(&output->queue.present.lock);
-        if (wl_list_empty(&output->queue.present.buffers)) {
-            pthread_mutex_unlock(&output->queue.present.lock);
-            pthread_cond_wait(&output->queue_thread_cond,
-                              &output->queue_thread_lock);
+    pthread_mutex_lock(&output->present_queue.thread_lock);
+    while (output->present_queue.state != TGUI_ERR_ACTIVITY_DESTROYED) {
+        pthread_mutex_lock(&output->present_queue.pending.lock);
+        if (wl_list_empty(&output->present_queue.pending.buffers) ||
+            output->tgui_activity_is_foreground == false) {
+            pthread_mutex_unlock(&output->present_queue.pending.lock);
+            pthread_cond_wait(&output->present_queue.thread_cond,
+                              &output->present_queue.thread_lock);
         } else {
             struct wlr_tgui_buffer *buffer = wl_container_of(
-                output->queue.present.buffers.prev, buffer, link);
+                output->present_queue.pending.buffers.prev, buffer, link);
             wl_list_remove(&buffer->link);
-            pthread_mutex_unlock(&output->queue.present.lock);
+            pthread_mutex_unlock(&output->present_queue.pending.lock);
 
-            if (output->tgui_activity_state) {
-                uint32_t state = tgui_surface_view_set_buffer(
-                    output->backend->conn, output->tgui_activity,
-                    output->tgui_surfaceview, &buffer->buffer);
-                if (state == TGUI_ERR_ACTIVITY_DESTROYED) {
-                    output->queue.present.state = 1;
-                }
-            }
+            output->present_queue.state = tgui_surface_view_set_buffer(
+                output->backend->conn, output->tgui_activity,
+                output->tgui_surfaceview, &buffer->buffer);
 
-            pthread_mutex_lock(&output->queue.idle.lock);
-            wl_list_insert(&output->queue.idle.buffers, &buffer->link);
-            pthread_mutex_unlock(&output->queue.idle.lock);
+            pthread_mutex_lock(&output->present_queue.idle.lock);
+            wl_list_insert(&output->present_queue.idle.buffers,
+                           &buffer->link);
+            pthread_mutex_unlock(&output->present_queue.idle.lock);
 
             uint64_t count = 1;
-            write(output->queue_event_fd, &count, sizeof(count));
+            write(output->present_queue.idle_event_fd, &count, sizeof(count));
         }
     }
-    pthread_mutex_unlock(&output->queue_thread_lock);
+    pthread_mutex_unlock(&output->present_queue.thread_lock);
     return 0;
 }
 
-static int queue_present_event(int fd, uint32_t mask, void *data) {
+static int present_idle_event(int fd, uint32_t mask, void *data) {
     struct wlr_tgui_output *output = data;
 
     if ((mask & WL_EVENT_HANGUP) || (mask & WL_EVENT_ERROR)) {
         if (mask & WL_EVENT_ERROR) {
-            wlr_log(WLR_ERROR, "Failed to read from present event");
+            wlr_log(WLR_ERROR, "Failed to read from idle event");
         }
         return 0;
     }
@@ -250,13 +251,14 @@ static int queue_present_event(int fd, uint32_t mask, void *data) {
     }
 
     struct wlr_tgui_buffer *buffer, *tmp;
-    pthread_mutex_lock(&output->queue.idle.lock);
-    wl_list_for_each_safe(buffer, tmp, &output->queue.idle.buffers, link) {
+    pthread_mutex_lock(&output->present_queue.idle.lock);
+    wl_list_for_each_safe(buffer, tmp, &output->present_queue.idle.buffers,
+                          link) {
         wl_list_remove(&buffer->link);
         wlr_buffer_unlock(&buffer->wlr_buffer);
         break;
     }
-    pthread_mutex_unlock(&output->queue.idle.lock);
+    pthread_mutex_unlock(&output->present_queue.idle.lock);
 
     struct wlr_output_event_present present_event = {
         .commit_seq = output->wlr_output.commit_seq + 1,
@@ -286,8 +288,8 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
     }
     output->backend = backend;
 
-    wl_list_init(&output->queue.present.buffers);
-    wl_list_init(&output->queue.idle.buffers);
+    wl_list_init(&output->present_queue.pending.buffers);
+    wl_list_init(&output->present_queue.idle.buffers);
 
     wlr_pointer_init(&output->pointer, &tgui_pointer_impl, "tgui-pointer");
     wlr_keyboard_init(&output->keyboard, &tgui_keyboard_impl,
@@ -329,18 +331,21 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
     wl_list_insert(&backend->outputs, &output->link);
 
     uint32_t events = WL_EVENT_READABLE | WL_EVENT_ERROR | WL_EVENT_HANGUP;
-    output->queue_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-    output->queue_event_source =
-        wl_event_loop_add_fd(backend->loop, output->queue_event_fd, events,
-                             queue_present_event, output);
+    output->present_queue.idle_event_fd =
+        eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+    output->present_queue.idle_event_source = wl_event_loop_add_fd(
+        backend->loop, output->present_queue.idle_event_fd, events,
+        present_idle_event, output);
 
-    assert(output->queue_event_fd >= 0 && output->queue_event_source != NULL);
+    assert(output->present_queue.idle_event_fd >= 0 &&
+           output->present_queue.idle_event_source != NULL);
 
-    pthread_mutex_init(&output->queue.present.lock, NULL);
-    pthread_mutex_init(&output->queue.idle.lock, NULL);
-    pthread_mutex_init(&output->queue_thread_lock, NULL);
-    pthread_cond_init(&output->queue_thread_cond, NULL);
-    pthread_create(&output->queue_thread, NULL, queue_present_thread, output);
+    pthread_mutex_init(&output->present_queue.pending.lock, NULL);
+    pthread_mutex_init(&output->present_queue.idle.lock, NULL);
+    pthread_mutex_init(&output->present_queue.thread_lock, NULL);
+    pthread_cond_init(&output->present_queue.thread_cond, NULL);
+    pthread_create(&output->present_queue.thread, NULL, present_queue_thread,
+                   output);
 
     if (backend->started) {
         wlr_output_update_enabled(wlr_output, true);

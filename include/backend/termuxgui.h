@@ -56,21 +56,21 @@ struct wlr_tgui_output {
 
     tgui_activity tgui_activity;
     tgui_view tgui_surfaceview;
-    uint32_t tgui_activity_state;
+    bool tgui_activity_is_foreground;
 
     struct {
         struct {
             struct wl_list buffers;
-            uint32_t state;
             pthread_mutex_t lock;
-        } present, idle;
-    } queue;
+        } pending, idle;
 
-    int queue_event_fd;
-    pthread_t queue_thread;
-    pthread_cond_t queue_thread_cond;
-    pthread_mutex_t queue_thread_lock;
-    struct wl_event_source *queue_event_source;
+        tgui_err state;
+        pthread_t thread;
+        pthread_cond_t thread_cond;
+        pthread_mutex_t thread_lock;
+        int idle_event_fd;
+        struct wl_event_source *idle_event_source;
+    } present_queue;
 
     struct wlr_pointer pointer;
     struct wlr_keyboard keyboard;
