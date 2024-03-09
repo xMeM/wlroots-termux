@@ -75,8 +75,8 @@ void handle_touch_event(tgui_event *e,
         tgui_touch_pointer *p = &e->touch.pointers[e->touch.index][0];
         memset(&output->touch_pointer, 0, sizeof(output->touch_pointer));
         output->touch_pointer.id = p->id;
-        output->touch_pointer.x = (double) p->x / output->width;
-        output->touch_pointer.y = (double) p->y / output->height;
+        output->touch_pointer.x = (double) p->x / output->wlr_output.width;
+        output->touch_pointer.y = (double) p->y / output->wlr_output.height;
         output->touch_pointer.time_ms = time_ms;
         break;
     }
@@ -104,8 +104,8 @@ void handle_touch_event(tgui_event *e,
             if (p->id != output->touch_pointer.id) {
                 break;
             }
-            double x = (double) p->x / output->width;
-            double y = (double) p->y / output->height;
+            double x = (double) p->x / output->wlr_output.width;
+            double y = (double) p->y / output->wlr_output.height;
             double dx = output->touch_pointer.x - x;
             double dy = output->touch_pointer.y - y;
             if (dx + dy > 0.0f || dx + dy < -0.0f) {
@@ -119,10 +119,10 @@ void handle_touch_event(tgui_event *e,
                 e->touch.num_pointers == 2) {
                 static double s;
                 s += output->touch_pointer.dy;
-                if (s > (double) 150 / output->height) {
+                if (s > (double) 150 / output->wlr_output.height) {
                     send_pointer_axis(output, 1, time_ms);
                     s = 0;
-                } else if (s < (double) -150 / output->height) {
+                } else if (s < (double) -150 / output->wlr_output.height) {
                     send_pointer_axis(output, -1, time_ms);
                     s = 0;
                 }

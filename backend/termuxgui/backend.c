@@ -121,6 +121,9 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
     tgui_event_destroy(&event->e);
     free(event);
 
+    if (wl_list_empty(&backend->outputs)) {
+        wl_display_terminate(backend->display);
+    }
     return 0;
 }
 

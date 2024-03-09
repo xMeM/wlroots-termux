@@ -21,18 +21,6 @@ tgui_output_from_output(struct wlr_output *wlr_output) {
     return (struct wlr_tgui_output *) wlr_output;
 }
 
-static bool output_set_custom_mode(struct wlr_tgui_output *output,
-                                   int32_t width,
-                                   int32_t height,
-                                   int32_t refresh) {
-    output->width = width;
-    output->height = height;
-
-    wlr_output_update_custom_mode(&output->wlr_output, width, height,
-                                  refresh);
-    return true;
-}
-
 static bool output_test(struct wlr_output *wlr_output,
                         const struct wlr_output_state *state) {
     uint32_t unsupported = state->committed & ~SUPPORTED_OUTPUT_STATE;
@@ -40,10 +28,6 @@ static bool output_test(struct wlr_output *wlr_output,
         wlr_log(WLR_DEBUG, "Unsupported output state fields: 0x%" PRIx32,
                 unsupported);
         return false;
-    }
-
-    if (state->committed & WLR_OUTPUT_STATE_MODE) {
-        assert(state->mode_type == WLR_OUTPUT_STATE_MODE_CUSTOM);
     }
 
     return true;
@@ -58,11 +42,7 @@ static bool output_commit(struct wlr_output *wlr_output,
     }
 
     if (state->committed & WLR_OUTPUT_STATE_MODE) {
-        if (!output_set_custom_mode(output, state->custom_mode.width,
-                                    state->custom_mode.height,
-                                    state->custom_mode.refresh)) {
-            return false;
-        }
+        wlr_output_update_mode(&output->wlr_output, state->mode);
     }
 
     if (state->committed & WLR_OUTPUT_STATE_BUFFER) {
@@ -112,6 +92,12 @@ static void output_destroy(struct wlr_output *wlr_output) {
                           &output->present_queue.idle.buffers, link) {
         wl_list_remove(&buffer->link);
         wlr_buffer_unlock(&buffer->wlr_buffer);
+    }
+
+    struct wlr_output_mode *mode, *tmp_mode;
+    wl_list_for_each_safe(mode, tmp_mode, &output->wlr_output.modes, link) {
+        wl_list_remove(&mode->link);
+        free(mode);
     }
 
     pthread_mutex_destroy(&output->present_queue.pending.lock);
@@ -270,6 +256,27 @@ static int present_idle_event(int fd, uint32_t mask, void *data) {
     return 0;
 }
 
+static bool output_create_mode(struct wlr_tgui_output *output,
+                               int32_t width,
+                               int32_t height,
+                               int32_t refresh,
+                               bool preferred) {
+    struct wlr_output_mode *mode = calloc(1, sizeof(*mode));
+    if (mode == NULL) {
+        wlr_log(WLR_ERROR, "Failed to allocate wlr_output_mode");
+        return false;
+    }
+
+    mode->width = width;
+    mode->height = height;
+    mode->refresh = refresh;
+    mode->preferred = preferred;
+    mode->picture_aspect_ratio = WLR_OUTPUT_MODE_ASPECT_RATIO_16_9;
+
+    wl_list_insert(&output->wlr_output.modes, &mode->link);
+    return true;
+}
+
 const struct wlr_pointer_impl tgui_pointer_impl = {
     .name = "tgui-pointer",
 };
@@ -312,8 +319,17 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
     wlr_output->adaptive_sync_status = WLR_OUTPUT_ADAPTIVE_SYNC_ENABLED;
     wlr_output_set_render_format(wlr_output, DRM_FORMAT_ABGR8888);
     wlr_output_set_transform(wlr_output, WL_OUTPUT_TRANSFORM_FLIPPED_180);
-    output_set_custom_mode(output, conf.screen_height * conf.density,
-                           conf.screen_width * conf.density, 0);
+
+    bool preferred = true;
+    if (conf.screen_width * conf.density > 1080) {
+        output_create_mode(output, 2560, 1440, 0, preferred);
+        preferred = false;
+    }
+    if (conf.screen_width * conf.density > 720) {
+        output_create_mode(output, 1920, 1080, 0, preferred);
+        preferred = false;
+    }
+    output_create_mode(output, 1280, 720, 0, preferred);
 
     size_t output_num = ++last_output_num;
 

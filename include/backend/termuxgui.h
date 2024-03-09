@@ -83,7 +83,6 @@ struct wlr_tgui_output {
     } touch_pointer;
 
     double cursor_x, cursor_y;
-    uint32_t width, height;
 };
 
 struct wlr_tgui_event {
