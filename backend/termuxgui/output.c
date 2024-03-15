@@ -213,8 +213,7 @@ static void *present_queue_thread(void *data) {
                            &buffer->link);
             pthread_mutex_unlock(&output->present_queue.idle.lock);
 
-            uint64_t count = 1;
-            write(output->present_queue.idle_event_fd, &count, sizeof(count));
+            eventfd_write(output->present_queue.idle_event_fd, 1);
         }
     }
     pthread_mutex_unlock(&output->present_queue.thread_lock);
@@ -231,8 +230,8 @@ static int present_idle_event(int fd, uint32_t mask, void *data) {
         return 0;
     }
 
-    uint64_t count = 0;
-    if (read(fd, &count, sizeof(count)) == EAGAIN) {
+    eventfd_t count = 0;
+    if (eventfd_read(fd, &count) < 0) {
         return 0;
     }
 
@@ -348,7 +347,7 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
 
     uint32_t events = WL_EVENT_READABLE | WL_EVENT_ERROR | WL_EVENT_HANGUP;
     output->present_queue.idle_event_fd =
-        eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
+        eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
     output->present_queue.idle_event_source = wl_event_loop_add_fd(
         backend->loop, output->present_queue.idle_event_fd, events,
         present_idle_event, output);

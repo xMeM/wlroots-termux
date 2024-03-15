@@ -76,8 +76,8 @@ struct wlr_tgui_output {
     struct wlr_keyboard keyboard;
 
     struct {
-        int id;
-        double x, y, dx, dy;
+        int id, max;
+        double x, y;
         bool moved, down;
         uint64_t time_ms;
     } touch_pointer;

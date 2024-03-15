@@ -75,6 +75,7 @@ void handle_touch_event(tgui_event *e,
         tgui_touch_pointer *p = &e->touch.pointers[e->touch.index][0];
         memset(&output->touch_pointer, 0, sizeof(output->touch_pointer));
         output->touch_pointer.id = p->id;
+        output->touch_pointer.max = 0;
         output->touch_pointer.x = (double) p->x / output->wlr_output.width;
         output->touch_pointer.y = (double) p->y / output->wlr_output.height;
         output->touch_pointer.time_ms = time_ms;
@@ -85,10 +86,18 @@ void handle_touch_event(tgui_event *e,
         tgui_touch_pointer *p = &e->touch.pointers[e->touch.index][0];
         if (p->id == output->touch_pointer.id) {
             if (time_ms - output->touch_pointer.time_ms < 200 &&
+                output->touch_pointer.down == false &&
                 output->touch_pointer.moved == false) {
-                send_pointer_button(output, BTN_LEFT, WLR_BUTTON_PRESSED,
-                                    time_ms++);
-                output->touch_pointer.down = true;
+                if (output->touch_pointer.max > 1) {
+                    send_pointer_button(output, BTN_RIGHT, WLR_BUTTON_PRESSED,
+                                        time_ms++);
+                    send_pointer_button(output, BTN_RIGHT,
+                                        WLR_BUTTON_RELEASED, time_ms);
+                } else {
+                    send_pointer_button(output, BTN_LEFT, WLR_BUTTON_PRESSED,
+                                        time_ms++);
+                    output->touch_pointer.down = true;
+                }
             }
             if (output->touch_pointer.down) {
                 send_pointer_button(output, BTN_LEFT, WLR_BUTTON_RELEASED,
@@ -106,11 +115,11 @@ void handle_touch_event(tgui_event *e,
             }
             double x = (double) p->x / output->wlr_output.width;
             double y = (double) p->y / output->wlr_output.height;
+            double px = (double) 1 / output->wlr_output.width;
+            double py = (double) 1 / output->wlr_output.height;
             double dx = output->touch_pointer.x - x;
             double dy = output->touch_pointer.y - y;
-            if (dx + dy > 0.0f || dx + dy < -0.0f) {
-                output->touch_pointer.dx = dx;
-                output->touch_pointer.dy = dy;
+            if (dx >= px || dx <= -px || dy >= py || dy <= -py) {
                 output->touch_pointer.x -= dx;
                 output->touch_pointer.y -= dy;
                 output->touch_pointer.moved = true;
@@ -118,7 +127,7 @@ void handle_touch_event(tgui_event *e,
             if (output->touch_pointer.moved == true &&
                 e->touch.num_pointers == 2) {
                 static double s;
-                s += output->touch_pointer.dy;
+                s += dy;
                 if (s > (double) 150 / output->wlr_output.height) {
                     send_pointer_axis(output, 1, time_ms);
                     s = 0;
@@ -128,23 +137,16 @@ void handle_touch_event(tgui_event *e,
                 }
             } else if (output->touch_pointer.moved == false &&
                        output->touch_pointer.down == false &&
-                       time_ms - output->touch_pointer.time_ms > 150 &&
-                       e->touch.num_pointers == 2) {
-                send_pointer_button(output, BTN_RIGHT, WLR_BUTTON_PRESSED,
-                                    time_ms);
-                send_pointer_button(output, BTN_RIGHT, WLR_BUTTON_RELEASED,
-                                    time_ms);
-                output->touch_pointer.moved = true;
-            } else if (output->touch_pointer.moved == false &&
-                       output->touch_pointer.down == false &&
                        time_ms - output->touch_pointer.time_ms > 200) {
                 send_pointer_button(output, BTN_LEFT, WLR_BUTTON_PRESSED,
                                     time_ms);
                 output->touch_pointer.down = true;
-            } else if (output->touch_pointer.moved) {
-                move_cursor(output, output->touch_pointer.dx,
-                            output->touch_pointer.dy, time_ms);
+            } else {
+                move_cursor(output, dx, dy, time_ms);
             }
+        }
+        if (e->touch.num_pointers > (uint32_t) output->touch_pointer.max) {
+            output->touch_pointer.max = e->touch.num_pointers;
         }
         break;
     }

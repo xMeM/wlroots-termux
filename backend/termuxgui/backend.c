@@ -93,10 +93,8 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
         return 0;
     }
 
-    uint64_t event_count = 0;
-    if (read(backend->tgui_event_fd, &event_count, sizeof(event_count)) ==
-            EAGAIN ||
-        event_count == 0) {
+    eventfd_t event_count = 0;
+    if (eventfd_read(backend->tgui_event_fd, &event_count) < 0) {
         return 0;
     }
 
@@ -141,8 +139,7 @@ static void *tgui_event_thread(void *data) {
             wl_list_insert(&backend->event_queue, &wlr_event->link);
             pthread_mutex_unlock(&backend->event_queue_lock);
 
-            uint64_t event_count = 1;
-            write(backend->tgui_event_fd, &event_count, sizeof(event_count));
+            eventfd_write(backend->tgui_event_fd, 1);
         } else {
             wlr_log(WLR_ERROR, "event loss: out of memory");
             tgui_event_destroy(&event);
@@ -165,7 +162,7 @@ struct wlr_backend *wlr_tgui_backend_create(struct wl_display *display) {
     backend->display = display;
     backend->loop = wl_display_get_event_loop(display);
     backend->fake_drm_fd = open("/dev/null", O_RDONLY);
-    backend->tgui_event_fd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
+    backend->tgui_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
 
     assert(backend->fake_drm_fd >= 0 && backend->tgui_event_fd >= 0);
 
