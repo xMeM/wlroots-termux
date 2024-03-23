@@ -160,7 +160,7 @@ static void viewport_handle_surface_client_commit(struct wl_listener *listener,
 		return;
 	}
 
-	if (state->viewport.has_src && state->buffer != NULL &&
+	if (state->viewport.has_src && state->buffer_width > 0 && state->buffer_height > 0 &&
 			!check_src_buffer_bounds(state)) {
 		wl_resource_post_error(viewport->resource, WP_VIEWPORT_ERROR_OUT_OF_BUFFER,
 			"source rectangle out of buffer bounds");
