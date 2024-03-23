@@ -199,6 +199,13 @@ struct wlr_drm *wlr_drm_create(struct wl_display *display,
 		return NULL;
 	}
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+	static const char *fake_node = "/dev/null";
+	char *node_name = malloc(strlen(fake_node) + 1);
+	if (node_name) {
+		memcpy(node_name, fake_node, strlen(fake_node) + 1);
+	}
+#else
 	drmDevice *dev = NULL;
 	if (drmGetDevice2(drm_fd, 0, &dev) != 0) {
 		wlr_log(WLR_ERROR, "drmGetDevice2 failed");
@@ -218,6 +225,7 @@ struct wlr_drm *wlr_drm_create(struct wl_display *display,
 	if (node_name == NULL) {
 		return NULL;
 	}
+#endif
 
 	struct wlr_drm *drm = calloc(1, sizeof(*drm));
 	if (drm == NULL) {

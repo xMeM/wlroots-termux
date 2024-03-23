@@ -1817,7 +1817,7 @@ struct wlr_renderer *wlr_vk_renderer_create_with_drm_fd(int drm_fd) {
 	}
 
 #if defined (__ANDROID__) && defined (__TERMUX__)
-	dev->drm_fd = -1;
+	dev->drm_fd = open("/dev/null", O_RDONLY);
 #else
 	// We duplicate it so it's not closed while we still need it.
 	dev->drm_fd = fcntl(drm_fd, F_DUPFD_CLOEXEC, 0);
