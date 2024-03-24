@@ -159,7 +159,12 @@ int handle_activity_event(tgui_event *e, struct wlr_tgui_output *output) {
         break;
     }
     case TGUI_EVENT_KEY: {
-        handle_keyboard_event(e, output, time_ms);
+        if (e->key.code == 4 /* back */) {
+            tgui_focus(output->backend->conn, output->tgui_activity,
+                       output->tgui_surfaceview, true);
+        } else {
+            handle_keyboard_event(e, output, time_ms);
+        }
         break;
     }
     case TGUI_EVENT_TOUCH: {

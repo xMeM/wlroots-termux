@@ -1,5 +1,6 @@
 #include <android/keycodes.h>
 #include <linux/input-event-codes.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "backend/termuxgui.h"
 
@@ -156,83 +157,108 @@ void handle_touch_event(tgui_event *e,
     }
 }
 
-const struct {
-    int android;
-    int linux;
+static const struct {
+    uint32_t android, linux, wlr_mod;
 } keymap[] = {
-    { AKEYCODE_0, KEY_0 },           { AKEYCODE_1, KEY_1 },
-    { AKEYCODE_2, KEY_2 },           { AKEYCODE_3, KEY_3 },
-    { AKEYCODE_4, KEY_4 },           { AKEYCODE_5, KEY_5 },
-    { AKEYCODE_6, KEY_6 },           { AKEYCODE_7, KEY_7 },
-    { AKEYCODE_8, KEY_8 },           { AKEYCODE_9, KEY_9 },
-    { AKEYCODE_A, KEY_A },           { AKEYCODE_B, KEY_B },
-    { AKEYCODE_C, KEY_C },           { AKEYCODE_D, KEY_D },
-    { AKEYCODE_E, KEY_E },           { AKEYCODE_F, KEY_F },
-    { AKEYCODE_G, KEY_G },           { AKEYCODE_H, KEY_H },
-    { AKEYCODE_I, KEY_I },           { AKEYCODE_J, KEY_J },
-    { AKEYCODE_K, KEY_K },           { AKEYCODE_L, KEY_L },
-    { AKEYCODE_M, KEY_M },           { AKEYCODE_N, KEY_N },
-    { AKEYCODE_O, KEY_O },           { AKEYCODE_P, KEY_P },
-    { AKEYCODE_Q, KEY_Q },           { AKEYCODE_R, KEY_R },
-    { AKEYCODE_S, KEY_S },           { AKEYCODE_T, KEY_T },
-    { AKEYCODE_U, KEY_U },           { AKEYCODE_V, KEY_V },
-    { AKEYCODE_W, KEY_W },           { AKEYCODE_X, KEY_X },
-    { AKEYCODE_Y, KEY_Y },           { AKEYCODE_Z, KEY_Z },
-    { AKEYCODE_ENTER, KEY_ENTER },   { AKEYCODE_SPACE, KEY_SPACE },
-    { AKEYCODE_DEL, KEY_BACKSPACE }, { AKEYCODE_SHIFT_LEFT, KEY_LEFTSHIFT },
-    { AKEYCODE_COMMA, KEY_COMMA },   { AKEYCODE_PERIOD, KEY_DOT },
+    { AKEYCODE_0, KEY_0 },
+    { AKEYCODE_1, KEY_1 },
+    { AKEYCODE_2, KEY_2 },
+    { AKEYCODE_3, KEY_3 },
+    { AKEYCODE_4, KEY_4 },
+    { AKEYCODE_5, KEY_5 },
+    { AKEYCODE_6, KEY_6 },
+    { AKEYCODE_7, KEY_7 },
+    { AKEYCODE_8, KEY_8 },
+    { AKEYCODE_9, KEY_9 },
+    { AKEYCODE_A, KEY_A },
+    { AKEYCODE_B, KEY_B },
+    { AKEYCODE_C, KEY_C },
+    { AKEYCODE_D, KEY_D },
+    { AKEYCODE_E, KEY_E },
+    { AKEYCODE_F, KEY_F },
+    { AKEYCODE_G, KEY_G },
+    { AKEYCODE_H, KEY_H },
+    { AKEYCODE_I, KEY_I },
+    { AKEYCODE_J, KEY_J },
+    { AKEYCODE_K, KEY_K },
+    { AKEYCODE_L, KEY_L },
+    { AKEYCODE_M, KEY_M },
+    { AKEYCODE_N, KEY_N },
+    { AKEYCODE_O, KEY_O },
+    { AKEYCODE_P, KEY_P },
+    { AKEYCODE_Q, KEY_Q },
+    { AKEYCODE_R, KEY_R },
+    { AKEYCODE_S, KEY_S },
+    { AKEYCODE_T, KEY_T },
+    { AKEYCODE_U, KEY_U },
+    { AKEYCODE_V, KEY_V },
+    { AKEYCODE_W, KEY_W },
+    { AKEYCODE_X, KEY_X },
+    { AKEYCODE_Y, KEY_Y },
+    { AKEYCODE_Z, KEY_Z },
+    { AKEYCODE_ENTER, KEY_ENTER },
+    { AKEYCODE_SPACE, KEY_SPACE },
+    { AKEYCODE_DEL, KEY_BACKSPACE },
+    { AKEYCODE_SHIFT_LEFT, KEY_LEFTSHIFT },
+    { AKEYCODE_COMMA, KEY_COMMA },
+    { AKEYCODE_PERIOD, KEY_DOT },
     { AKEYCODE_MINUS, KEY_MINUS },
+    { AKEYCODE_AT, KEY_2, WLR_MODIFIER_SHIFT },
+    { AKEYCODE_STAR, KEY_8, WLR_MODIFIER_SHIFT },
+    { AKEYCODE_POUND, KEY_3, WLR_MODIFIER_SHIFT },
+    { AKEYCODE_SEMICOLON, KEY_SEMICOLON },
+    { AKEYCODE_APOSTROPHE, KEY_APOSTROPHE },
+    { AKEYCODE_SLASH, KEY_SLASH },
+    { AKEYCODE_EQUALS, KEY_EQUAL },
+    { AKEYCODE_PLUS, KEY_EQUAL, WLR_MODIFIER_SHIFT },
+    { AKEYCODE_GRAVE, KEY_GRAVE },
+    { AKEYCODE_BACKSLASH, KEY_BACKSLASH },
+    { AKEYCODE_LEFT_BRACKET, KEY_LEFTBRACE },
+    { AKEYCODE_RIGHT_BRACKET, KEY_RIGHTBRACE },
 };
 
-static int android_keycode_to_linux(int code) {
+static bool get_keycode_and_modifier(uint32_t code,
+                                     uint32_t *keycode,
+                                     uint32_t *out_mod) {
     for (size_t i = 0; i < sizeof(keymap) / sizeof(*keymap); i++) {
         if (code == keymap[i].android) {
-            return keymap[i].linux;
+            *keycode = keymap[i].linux;
+            *out_mod = keymap[i].wlr_mod;
+            return true;
         }
     }
 
-    return KEY_UNKNOWN;
+    return false;
 }
 
 void handle_keyboard_event(tgui_event *e,
                            struct wlr_tgui_output *output,
                            uint64_t time_ms) {
-    int keycode;
-    if (e->key.code == 4 /* back */) {
-        tgui_focus(output->backend->conn, output->tgui_activity,
-                   output->tgui_surfaceview, true);
-    } else if ((keycode = android_keycode_to_linux(e->key.code)) !=
-               KEY_UNKNOWN) {
-        static bool shift;
-        if (keycode == KEY_LEFTSHIFT) {
-            shift = true;
-            return;
-        }
+    uint32_t keycode, modifiers;
 
-        struct wlr_keyboard_key_event key = {
-            .time_msec = time_ms,
-            .keycode = keycode,
-            .state = e->key.down ? WL_KEYBOARD_KEY_STATE_PRESSED
-                                 : WL_KEYBOARD_KEY_STATE_RELEASED,
-            .update_state = true,
-        };
-        struct wlr_keyboard_key_event shift_key = {
-            .time_msec = time_ms,
-            .keycode = KEY_LEFTSHIFT,
-            .update_state = true,
-        };
-
-        if (shift) {
-            shift_key.state = WL_KEYBOARD_KEY_STATE_PRESSED,
-            wlr_keyboard_notify_key(&output->keyboard, &shift_key);
-        }
-        wlr_keyboard_notify_key(&output->keyboard, &key);
-        if (shift) {
-            shift_key.state = WL_KEYBOARD_KEY_STATE_RELEASED;
-            wlr_keyboard_notify_key(&output->keyboard, &shift_key);
-            shift = false;
-        }
-    } else {
-        wlr_log(WLR_ERROR, "Unhandled keycode %d", e->key.code);
+    if (!get_keycode_and_modifier(e->key.code, &keycode, &modifiers)) {
+        wlr_log(WLR_ERROR, "Unhandled keycode %d %c", e->key.code,
+                e->key.codePoint);
+        return;
     }
+
+    if (e->key.mod & (TGUI_MOD_LSHIFT | TGUI_MOD_RSHIFT))
+        modifiers |= WLR_MODIFIER_SHIFT;
+    if (e->key.mod & (TGUI_MOD_LCTRL | TGUI_MOD_RCTRL))
+        modifiers |= WLR_MODIFIER_CTRL;
+    if (e->key.mod & TGUI_MOD_ALT)
+        modifiers |= WLR_MODIFIER_ALT;
+
+    xkb_layout_index_t group =
+        xkb_state_key_get_layout(output->keyboard.xkb_state, keycode + 8);
+    wlr_keyboard_notify_modifiers(&output->keyboard, modifiers, 0, 0, group);
+
+    struct wlr_keyboard_key_event key = {
+        .time_msec = time_ms,
+        .keycode = keycode,
+        .state = e->key.down ? WL_KEYBOARD_KEY_STATE_PRESSED
+                             : WL_KEYBOARD_KEY_STATE_RELEASED,
+        .update_state = true,
+    };
+    wlr_keyboard_notify_key(&output->keyboard, &key);
 }
