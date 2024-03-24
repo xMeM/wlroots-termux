@@ -14,9 +14,15 @@
 #include <wlr/util/log.h>
 #include "sockets.h"
 
+#if defined (__ANDROID__) && defined (__TERMUX__)
+static const char lock_fmt[] = "/data/data/com.termux/files/usr/tmp/.X%d-lock";
+static const char socket_dir[] = "/data/data/com.termux/files/usr/tmp/.X11-unix";
+static const char socket_fmt[] = "/data/data/com.termux/files/usr/tmp/.X11-unix/X%d";
+#else
 static const char lock_fmt[] = "/tmp/.X%d-lock";
 static const char socket_dir[] = "/tmp/.X11-unix";
 static const char socket_fmt[] = "/tmp/.X11-unix/X%d";
+#endif
 #ifndef __linux__
 static const char socket_fmt2[] = "/tmp/.X11-unix/X%d_";
 #endif
