@@ -6,6 +6,3 @@ wlr_files += files(
 )
 
 wlr_deps += cc.find_library('termuxgui')
-wlr_deps += cc.find_library('android')
-
-add_project_arguments(['-target', 'aarch64-linux-android33'], language: 'c')

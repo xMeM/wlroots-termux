@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <dlfcn.h>
 #include <malloc.h>
 #include <pthread.h>
 #include <unistd.h>
@@ -31,7 +32,8 @@ tgui_allocator_from_allocator(struct wlr_allocator *wlr_allocator) {
 static void buffer_destroy(struct wlr_buffer *wlr_buffer) {
     struct wlr_tgui_buffer *buffer = tgui_buffer_from_buffer(wlr_buffer);
     if (buffer->data) {
-        AHardwareBuffer_unlock(buffer->buffer.buffer, NULL);
+        buffer->allocator->AHardwareBuffer_unlock(buffer->buffer.buffer,
+                                                  NULL);
     }
 
     wlr_dmabuf_attributes_finish(&buffer->dmabuf);
@@ -54,10 +56,11 @@ static bool begin_data_ptr_access(struct wlr_buffer *wlr_buffer,
     struct wlr_tgui_buffer *buffer = tgui_buffer_from_buffer(wlr_buffer);
 
     if (buffer->data == NULL) {
-        AHardwareBuffer_lock(buffer->buffer.buffer,
-                             AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
-                                 AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
-                             -1, NULL, &buffer->data);
+        buffer->allocator->AHardwareBuffer_lock(
+            buffer->buffer.buffer,
+            AHARDWAREBUFFER_USAGE_CPU_READ_RARELY |
+                AHARDWAREBUFFER_USAGE_CPU_WRITE_RARELY,
+            -1, NULL, &buffer->data);
         if (buffer->data == NULL) {
             wlr_log(WLR_ERROR, "AHardwareBuffer_lock failed");
             return false;
@@ -106,6 +109,7 @@ allocator_create_buffer(struct wlr_allocator *wlr_allocator,
     if (buffer == NULL) {
         return NULL;
     }
+    buffer->allocator = alloc;
     buffer->format = format->format;
     buffer->conn = alloc->conn;
 
@@ -120,12 +124,12 @@ allocator_create_buffer(struct wlr_allocator *wlr_allocator,
         free(buffer);
         return NULL;
     }
-    AHardwareBuffer_describe(buffer->buffer.buffer, &buffer->desc);
+    alloc->AHardwareBuffer_describe(buffer->buffer.buffer, &buffer->desc);
 
     const native_handle_t *handle =
-        AHardwareBuffer_getNativeHandle(buffer->buffer.buffer);
-    int fd = -1;
+        alloc->AHardwareBuffer_getNativeHandle(buffer->buffer.buffer);
 
+    int fd = -1;
     for (int i = 0; i < handle->numFds; i++) {
         size_t size = lseek(handle->data[i], 0, SEEK_END);
         if (size < (buffer->desc.stride * buffer->desc.height * 4))
@@ -157,7 +161,34 @@ allocator_create_buffer(struct wlr_allocator *wlr_allocator,
     return &buffer->wlr_buffer;
 }
 
+static bool load_android_library(struct wlr_tgui_allocator *allocator) {
+    void *library_handle = dlopen("libandroid.so", RTLD_NOW);
+    if (!library_handle) {
+        wlr_log(WLR_ERROR, "load libandroid.so failed:%s", dlerror());
+        return false;
+    }
+
+#define LOAD_SYM(name)                                                       \
+    if ((allocator->name = dlsym(library_handle, #name)) == NULL) {          \
+        wlr_log(WLR_ERROR, "dlsym %s failed:%s", #name, dlerror());          \
+        dlclose(library_handle);                                             \
+        return false;                                                        \
+    }
+
+    LOAD_SYM(AHardwareBuffer_lock)
+    LOAD_SYM(AHardwareBuffer_unlock)
+    LOAD_SYM(AHardwareBuffer_describe)
+    LOAD_SYM(AHardwareBuffer_getNativeHandle)
+#undef LOAD_SYM
+
+    allocator->libandroid_handle = library_handle;
+    return true;
+}
+
 static void allocator_destroy(struct wlr_allocator *wlr_allocator) {
+    struct wlr_tgui_allocator *alloc =
+        tgui_allocator_from_allocator(wlr_allocator);
+    dlclose(alloc->libandroid_handle);
     free(wlr_allocator);
 }
 
@@ -172,8 +203,14 @@ wlr_tgui_allocator_create(struct wlr_tgui_backend *backend) {
     if (allocator == NULL) {
         return NULL;
     }
+    allocator->conn = backend->conn;
+
+    if (!load_android_library(allocator)) {
+        free(allocator);
+        return NULL;
+    }
+
     wlr_allocator_init(&allocator->wlr_allocator, &allocator_impl,
                        WLR_BUFFER_CAP_DMABUF | WLR_BUFFER_CAP_DATA_PTR);
-    allocator->conn = backend->conn;
     return &allocator->wlr_allocator;
 }

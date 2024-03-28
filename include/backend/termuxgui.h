@@ -13,6 +13,20 @@
 #include <wlr/render/allocator.h>
 #include <wlr/util/log.h>
 
+typedef struct native_handle {
+    int version; /* sizeof(native_handle_t) */
+    int numFds;  /* number of file-descriptors at &data[0] */
+    int numInts; /* number of ints at &data[numFds] */
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wzero-length-array"
+#endif
+    int data[0]; /* numFds + numInts ints */
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#endif
+} native_handle_t;
+
 struct wlr_tgui_backend {
     struct wlr_backend backend;
     struct wl_display *display;
@@ -33,6 +47,18 @@ struct wlr_tgui_backend {
 struct wlr_tgui_allocator {
     struct wlr_allocator wlr_allocator;
 
+    void *libandroid_handle;
+    int (*AHardwareBuffer_lock)(AHardwareBuffer *buffer,
+                                uint64_t usage,
+                                int32_t fence,
+                                const ARect *rect,
+                                void **outVirtualAddress);
+    int (*AHardwareBuffer_unlock)(AHardwareBuffer *buffer, int32_t *fence);
+    void (*AHardwareBuffer_describe)(const AHardwareBuffer *buffer,
+                                     AHardwareBuffer_Desc *outDesc);
+    const native_handle_t *(*AHardwareBuffer_getNativeHandle)(
+        const AHardwareBuffer *buffer);
+
     tgui_connection conn;
 };
 
@@ -46,6 +72,7 @@ struct wlr_tgui_buffer {
     AHardwareBuffer_Desc desc;
     struct wl_list link;
     struct wlr_dmabuf_attributes dmabuf;
+    struct wlr_tgui_allocator *allocator;
 };
 
 struct wlr_tgui_output {
@@ -109,29 +136,5 @@ void handle_touch_event(tgui_event *e,
 void handle_keyboard_event(tgui_event *e,
                            struct wlr_tgui_output *output,
                            uint64_t time_ms);
-
-typedef struct native_handle {
-    int version; /* sizeof(native_handle_t) */
-    int numFds;  /* number of file-descriptors at &data[0] */
-    int numInts; /* number of ints at &data[numFds] */
-#if defined(__clang__)
-#pragma clang diagnostic push
-#pragma clang diagnostic ignored "-Wzero-length-array"
-#endif
-    int data[0]; /* numFds + numInts ints */
-#if defined(__clang__)
-#pragma clang diagnostic pop
-#endif
-} native_handle_t;
-
-native_handle_t *native_handle_clone(const native_handle_t *handle);
-
-const native_handle_t *
-AHardwareBuffer_getNativeHandle(const AHardwareBuffer *buffer);
-
-int AHardwareBuffer_createFromHandle(const AHardwareBuffer_Desc *desc,
-                                     const native_handle_t *handle,
-                                     int32_t method,
-                                     AHardwareBuffer **outBuffer);
 
 #endif
