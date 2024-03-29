@@ -88,7 +88,7 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
     if ((mask & WL_EVENT_HANGUP) || (mask & WL_EVENT_ERROR)) {
         if (mask & WL_EVENT_ERROR) {
             wlr_log(WLR_ERROR, "Failed to read from tgui event");
-            wl_display_terminate(backend->display);
+            wlr_backend_destroy(&backend->backend);
         }
         return 0;
     }
@@ -101,7 +101,6 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
     pthread_mutex_lock(&backend->event_queue_lock);
     if (wl_list_empty(&backend->event_queue)) {
         pthread_mutex_unlock(&backend->event_queue_lock);
-        wlr_log(WLR_ERROR, "event queue empty");
         return 0;
     }
 
@@ -119,9 +118,6 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
     tgui_event_destroy(&event->e);
     free(event);
 
-    if (wl_list_empty(&backend->outputs)) {
-        wl_display_terminate(backend->display);
-    }
     return 0;
 }
 
