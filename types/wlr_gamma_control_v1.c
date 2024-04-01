@@ -67,8 +67,7 @@ static void gamma_control_handle_set_gamma(struct wl_client *client,
 		goto error_fd;
 	}
 
-	uint32_t ramp_size = wlr_output_get_gamma_size(gamma_control->output);
-	size_t table_size = ramp_size * 3 * sizeof(uint16_t);
+	size_t table_size = gamma_control->ramp_size * 3 * sizeof(uint16_t);
 
 	// Refuse to block when reading
 	int fd_flags = fcntl(fd, F_GETFL, 0);
@@ -106,7 +105,6 @@ static void gamma_control_handle_set_gamma(struct wl_client *client,
 
 	free(gamma_control->table);
 	gamma_control->table = table;
-	gamma_control->ramp_size = ramp_size;
 
 	struct wlr_gamma_control_manager_v1_set_gamma_event event = {
 		.output = gamma_control->output,
@@ -178,6 +176,7 @@ static void gamma_control_manager_get_gamma_control(struct wl_client *client,
 	gamma_control->output = output;
 	gamma_control->manager = manager;
 	gamma_control->resource = resource;
+	gamma_control->ramp_size = gamma_size;
 	wl_resource_set_user_data(resource, gamma_control);
 
 	wl_signal_add(&output->events.destroy,
