@@ -117,6 +117,28 @@ bool wlr_output_is_tgui(struct wlr_output *wlr_output) {
     return wlr_output->impl == &output_impl;
 }
 
+static struct wlr_output_mode *
+output_create_mode(struct wlr_tgui_output *output,
+                   int32_t width,
+                   int32_t height,
+                   int32_t refresh,
+                   bool preferred) {
+    struct wlr_output_mode *mode = calloc(1, sizeof(*mode));
+    if (mode == NULL) {
+        wlr_log(WLR_ERROR, "Failed to allocate wlr_output_mode");
+        return NULL;
+    }
+
+    mode->width = width;
+    mode->height = height;
+    mode->refresh = refresh;
+    mode->preferred = preferred;
+    mode->picture_aspect_ratio = WLR_OUTPUT_MODE_ASPECT_RATIO_16_9;
+
+    wl_list_insert(&output->wlr_output.modes, &mode->link);
+    return mode;
+}
+
 static void output_configure_surfaceview(struct wlr_tgui_output *output) {
     tgui_activity_set_orientation(output->backend->conn,
                                   output->tgui_activity,
@@ -135,6 +157,11 @@ static void output_configure_surfaceview(struct wlr_tgui_output *output) {
                           output->tgui_surfaceview, true);
     tgui_focus(output->backend->conn, output->tgui_activity,
                output->tgui_surfaceview, false);
+
+    float w, h;
+    tgui_get_dimensions(output->backend->conn, output->tgui_activity,
+                        output->tgui_surfaceview, TGUI_UNIT_PX, &w, &h);
+    output_create_mode(output, w, h, DEFAULT_REFRESH, true);
 }
 
 int handle_activity_event(tgui_event *e, struct wlr_tgui_output *output) {
@@ -260,27 +287,6 @@ static int present_idle_event(int fd, uint32_t mask, void *data) {
     return 0;
 }
 
-static bool output_create_mode(struct wlr_tgui_output *output,
-                               int32_t width,
-                               int32_t height,
-                               int32_t refresh,
-                               bool preferred) {
-    struct wlr_output_mode *mode = calloc(1, sizeof(*mode));
-    if (mode == NULL) {
-        wlr_log(WLR_ERROR, "Failed to allocate wlr_output_mode");
-        return false;
-    }
-
-    mode->width = width;
-    mode->height = height;
-    mode->refresh = refresh;
-    mode->preferred = preferred;
-    mode->picture_aspect_ratio = WLR_OUTPUT_MODE_ASPECT_RATIO_16_9;
-
-    wl_list_insert(&output->wlr_output.modes, &mode->link);
-    return true;
-}
-
 const struct wlr_pointer_impl tgui_pointer_impl = {
     .name = "tgui-pointer",
 };
@@ -312,10 +318,6 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
         free(output);
         return NULL;
     }
-    tgui_activity_configuration conf;
-    tgui_activity_get_configuration(backend->conn, output->tgui_activity,
-                                    &conf);
-
     wlr_output_init(&output->wlr_output, &backend->backend, &output_impl,
                     backend->display);
     struct wlr_output *wlr_output = &output->wlr_output;
@@ -324,16 +326,15 @@ struct wlr_output *wlr_tgui_add_output(struct wlr_backend *wlr_backend) {
     wlr_output_set_render_format(wlr_output, DRM_FORMAT_ABGR8888);
     wlr_output_set_transform(wlr_output, WL_OUTPUT_TRANSFORM_FLIPPED_180);
 
-    bool preferred = true;
-    if (conf.screen_width * conf.density > 1080) {
-        output_create_mode(output, 2560, 1440, 0, preferred);
-        preferred = false;
+    tgui_activity_configuration activity_config;
+    tgui_activity_get_configuration(backend->conn, output->tgui_activity,
+                                    &activity_config);
+    output_create_mode(output, 1280, 720, DEFAULT_REFRESH, false);
+    output_create_mode(output, 1920, 1080, DEFAULT_REFRESH, false);
+    if (activity_config.screen_height * activity_config.density > 1920 &&
+        activity_config.screen_width * activity_config.density > 1080) {
+        output_create_mode(output, 2560, 1440, DEFAULT_REFRESH, false);
     }
-    if (conf.screen_width * conf.density > 720) {
-        output_create_mode(output, 1920, 1080, 0, preferred);
-        preferred = false;
-    }
-    output_create_mode(output, 1280, 720, 0, preferred);
 
     size_t output_num = ++last_output_num;
 

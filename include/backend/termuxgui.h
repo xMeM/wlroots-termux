@@ -13,6 +13,8 @@
 #include <wlr/render/allocator.h>
 #include <wlr/util/log.h>
 
+#define DEFAULT_REFRESH (60 * 1000) // 60 Hz
+
 typedef struct native_handle {
     int version; /* sizeof(native_handle_t) */
     int numFds;  /* number of file-descriptors at &data[0] */
