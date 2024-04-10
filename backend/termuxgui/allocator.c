@@ -73,7 +73,15 @@ static bool begin_data_ptr_access(struct wlr_buffer *wlr_buffer,
     return true;
 }
 
-static void end_data_ptr_access(struct wlr_buffer *buffer) {}
+static void end_data_ptr_access(struct wlr_buffer *wlr_buffer) {
+    struct wlr_tgui_buffer *buffer = tgui_buffer_from_buffer(wlr_buffer);
+
+    if (buffer->data) {
+        buffer->allocator->AHardwareBuffer_unlock(buffer->buffer.buffer,
+                                                  NULL);
+        buffer->data = NULL;
+    }
+}
 
 static const struct wlr_buffer_impl buffer_impl = {
     .destroy = buffer_destroy,
@@ -117,12 +125,15 @@ allocator_create_buffer(struct wlr_allocator *wlr_allocator,
 
     tgui_err ret = tgui_hardware_buffer_create(
         alloc->conn, &buffer->buffer, TGUI_HARDWARE_BUFFER_FORMAT_RGBA8888,
-        width, height, TGUI_HARDWARE_BUFFER_CPU_RARELY,
-        TGUI_HARDWARE_BUFFER_CPU_RARELY);
+        width, height, TGUI_HARDWARE_BUFFER_CPU_OFTEN,
+        TGUI_HARDWARE_BUFFER_CPU_OFTEN);
     if (ret > 0) {
         wlr_log(WLR_ERROR, "Failed to create tgui_hardware_buffer");
         free(buffer);
         return NULL;
+    } else {
+        wlr_log(WLR_INFO, "Create tgui_hardware_buffer width: %d height: %d",
+                width, height);
     }
     alloc->AHardwareBuffer_describe(buffer->buffer.buffer, &buffer->desc);
 

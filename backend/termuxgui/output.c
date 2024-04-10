@@ -140,28 +140,39 @@ output_create_mode(struct wlr_tgui_output *output,
 }
 
 static void output_configure_surfaceview(struct wlr_tgui_output *output) {
-    tgui_activity_set_orientation(output->backend->conn,
-                                  output->tgui_activity,
-                                  TGUI_ORIENTATION_LANDSCAPE);
-    tgui_activity_configure_insets(
+#define TRY_LOG(expression)                                                  \
+    do {                                                                     \
+        tgui_err ret = expression;                                           \
+        if (ret > 0) {                                                       \
+            wlr_log(WLR_ERROR, "tgui_err: %d", ret);                         \
+        }                                                                    \
+    } while (0)
+
+    TRY_LOG(tgui_activity_set_orientation(output->backend->conn,
+                                          output->tgui_activity,
+                                          TGUI_ORIENTATION_LANDSCAPE));
+    TRY_LOG(tgui_activity_configure_insets(
         output->backend->conn, output->tgui_activity,
-        TGUI_INSET_NAVIGATION_BAR, TGUI_INSET_BEHAVIOUR_TRANSIENT);
-    tgui_create_surface_view(output->backend->conn, output->tgui_activity,
-                             &output->tgui_surfaceview, NULL,
-                             TGUI_VIS_VISIBLE, true);
-    tgui_surface_view_config(output->backend->conn, output->tgui_activity,
-                             output->tgui_surfaceview, 0,
-                             TGUI_MISMATCH_CENTER_AXIS,
-                             TGUI_MISMATCH_CENTER_AXIS, 120);
-    tgui_send_touch_event(output->backend->conn, output->tgui_activity,
-                          output->tgui_surfaceview, true);
-    tgui_focus(output->backend->conn, output->tgui_activity,
-               output->tgui_surfaceview, false);
+        TGUI_INSET_NAVIGATION_BAR, TGUI_INSET_BEHAVIOUR_TRANSIENT));
+    TRY_LOG(tgui_create_surface_view(
+        output->backend->conn, output->tgui_activity,
+        &output->tgui_surfaceview, NULL, TGUI_VIS_VISIBLE, true));
+    TRY_LOG(tgui_surface_view_config(
+        output->backend->conn, output->tgui_activity,
+        output->tgui_surfaceview, 0, TGUI_MISMATCH_CENTER_AXIS,
+        TGUI_MISMATCH_CENTER_AXIS, 120));
+    TRY_LOG(tgui_send_touch_event(output->backend->conn,
+                                  output->tgui_activity,
+                                  output->tgui_surfaceview, true));
+    TRY_LOG(tgui_focus(output->backend->conn, output->tgui_activity,
+                       output->tgui_surfaceview, false));
 
     float w, h;
-    tgui_get_dimensions(output->backend->conn, output->tgui_activity,
-                        output->tgui_surfaceview, TGUI_UNIT_PX, &w, &h);
+    TRY_LOG(tgui_get_dimensions(output->backend->conn, output->tgui_activity,
+                                output->tgui_surfaceview, TGUI_UNIT_PX, &w,
+                                &h));
     output_create_mode(output, w, h, DEFAULT_REFRESH, true);
+#undef TRY_LOG
 }
 
 int handle_activity_event(tgui_event *e, struct wlr_tgui_output *output) {
@@ -239,6 +250,11 @@ static void *present_queue_thread(void *data) {
             output->present_queue.state = tgui_surface_view_set_buffer(
                 output->backend->conn, output->tgui_activity,
                 output->tgui_surfaceview, &buffer->buffer);
+
+            if (output->present_queue.state != TGUI_ERR_OK) {
+                wlr_log(WLR_ERROR, "tgui_surface_view_set_buffer error: %d",
+                        output->present_queue.state);
+            }
 
             pthread_mutex_lock(&output->present_queue.idle.lock);
             wl_list_insert(&output->present_queue.idle.buffers,
