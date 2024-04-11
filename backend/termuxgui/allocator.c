@@ -175,13 +175,13 @@ allocator_create_buffer(struct wlr_allocator *wlr_allocator,
 static bool load_android_library(struct wlr_tgui_allocator *allocator) {
     void *library_handle = dlopen("libandroid.so", RTLD_NOW);
     if (!library_handle) {
-        wlr_log(WLR_ERROR, "load libandroid.so failed:%s", dlerror());
+        wlr_log(WLR_ERROR, "%s", dlerror());
         return false;
     }
 
 #define LOAD_SYM(name)                                                       \
     if ((allocator->name = dlsym(library_handle, #name)) == NULL) {          \
-        wlr_log(WLR_ERROR, "dlsym %s failed:%s", #name, dlerror());          \
+        wlr_log(WLR_ERROR, "%s", dlerror());                                 \
         dlclose(library_handle);                                             \
         return false;                                                        \
     }

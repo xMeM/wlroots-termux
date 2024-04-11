@@ -49,7 +49,7 @@ static void backend_destroy(struct wlr_backend *wlr_backend) {
 
     tgui_connection_destroy(backend->conn);
     pthread_join(backend->tgui_event_thread, NULL);
-    pthread_mutex_destroy(&backend->event_queue_lock);
+    wlr_queue_destroy(&backend->event_queue);
 
     close(backend->fake_drm_fd);
     close(backend->tgui_event_fd);
@@ -98,16 +98,12 @@ static int handle_tgui_event(int fd, uint32_t mask, void *data) {
         return 0;
     }
 
-    pthread_mutex_lock(&backend->event_queue_lock);
-    if (wl_list_empty(&backend->event_queue)) {
-        pthread_mutex_unlock(&backend->event_queue_lock);
+    struct wl_list *elm = wlr_queue_pull(&backend->event_queue, true);
+    if (elm == NULL) {
+        wlr_log(WLR_ERROR, "tgui event queue is empty");
         return 0;
     }
-
-    struct wlr_tgui_event *event =
-        wl_container_of(backend->event_queue.prev, event, link);
-    wl_list_remove(&event->link);
-    pthread_mutex_unlock(&backend->event_queue_lock);
+    struct wlr_tgui_event *event = wl_container_of(elm, event, link);
 
     struct wlr_tgui_output *output, *output_tmp;
     wl_list_for_each_safe(output, output_tmp, &backend->outputs, link) {
@@ -125,19 +121,16 @@ static void *tgui_event_thread(void *data) {
     struct wlr_tgui_backend *backend = data;
 
     tgui_event event;
-    while (tgui_wait_event(backend->conn, &event) == 0) {
+    while (tgui_wait_event(backend->conn, &event) == TGUI_ERR_OK) {
         struct wlr_tgui_event *wlr_event = calloc(1, sizeof(*wlr_event));
         if (wlr_event) {
-            wlr_event->e = event;
-            wlr_event->backend = backend;
+            memcpy(&wlr_event->e, &event, sizeof(tgui_event));
 
-            pthread_mutex_lock(&backend->event_queue_lock);
-            wl_list_insert(&backend->event_queue, &wlr_event->link);
-            pthread_mutex_unlock(&backend->event_queue_lock);
+            wlr_queue_push(&backend->event_queue, &wlr_event->link);
 
             eventfd_write(backend->tgui_event_fd, 1);
         } else {
-            wlr_log(WLR_ERROR, "event loss: out of memory");
+            wlr_log(WLR_ERROR, "tgui event loss: out of memory");
             tgui_event_destroy(&event);
         }
     }
@@ -158,7 +151,8 @@ struct wlr_backend *wlr_tgui_backend_create(struct wl_display *display) {
     backend->display = display;
     backend->loop = wl_display_get_event_loop(display);
     backend->fake_drm_fd = open("/dev/null", O_RDONLY);
-    backend->tgui_event_fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+    backend->tgui_event_fd =
+        eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
 
     assert(backend->fake_drm_fd >= 0 && backend->tgui_event_fd >= 0);
 
@@ -171,7 +165,6 @@ struct wlr_backend *wlr_tgui_backend_create(struct wl_display *display) {
     backend->backend.allocator = wlr_tgui_allocator_create(backend);
 
     wl_list_init(&backend->outputs);
-    wl_list_init(&backend->event_queue);
 
     backend->display_destroy.notify = handle_display_destroy;
     wl_display_add_destroy_listener(display, &backend->display_destroy);
@@ -181,7 +174,7 @@ struct wlr_backend *wlr_tgui_backend_create(struct wl_display *display) {
         wl_event_loop_add_fd(backend->loop, backend->tgui_event_fd, events,
                              handle_tgui_event, backend);
 
-    pthread_mutex_init(&backend->event_queue_lock, NULL);
+    wlr_queue_init(&backend->event_queue);
     pthread_create(&backend->tgui_event_thread, NULL, tgui_event_thread,
                    backend);
 
