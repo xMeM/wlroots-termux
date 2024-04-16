@@ -70,6 +70,13 @@ static void layer_surface_exclusive_zone(
 		usable_area->width -= state->exclusive_zone + state->margin.right;
 		break;
 	}
+
+	if (usable_area->width < 0) {
+		usable_area->width = 0;
+	}
+	if (usable_area->height < 0) {
+		usable_area->height = 0;
+	}
 }
 
 void wlr_scene_layer_surface_v1_configure(
