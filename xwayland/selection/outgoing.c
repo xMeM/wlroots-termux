@@ -27,11 +27,12 @@ static void xwm_selection_send_notify(struct wlr_xwm *xwm,
 		" requestor=%" PRIu32 " selection=%" PRIu32 " target=%" PRIu32 " property=%" PRIu32,
 		req->requestor, req->time, req->requestor, req->selection, req->target,
 		selection_notify.property);
-	xcb_send_event(xwm->xcb_conn,
+	xwm_send_event_with_size(xwm->xcb_conn,
 		0, // propagate
 		req->requestor,
 		XCB_EVENT_MASK_NO_EVENT,
-		(const char *)&selection_notify);
+		&selection_notify,
+		sizeof(selection_notify));
 	xcb_flush(xwm->xcb_conn);
 }
 

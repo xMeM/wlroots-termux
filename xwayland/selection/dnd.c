@@ -49,11 +49,12 @@ static void xwm_dnd_send_event(struct wlr_xwm *xwm, xcb_atom_t type,
 		.data = *data,
 	};
 
-	xcb_send_event(xwm->xcb_conn,
+	xwm_send_event_with_size(xwm->xcb_conn,
 		0, // propagate
 		dest->window_id,
 		XCB_EVENT_MASK_NO_EVENT,
-		(const char *)&event);
+		&event,
+		sizeof(event));
 	xcb_flush(xwm->xcb_conn);
 }
 
