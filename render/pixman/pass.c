@@ -47,6 +47,9 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		return;
 	}
 
+	pixman_op_t op = get_pixman_blending(options->blend_mode);
+	pixman_image_set_clip_region32(buffer->image, (pixman_region32_t *)options->clip);
+
 	struct wlr_fbox src_fbox;
 	wlr_render_texture_options_get_src_box(options, &src_fbox);
 	struct wlr_box src_box = {
@@ -71,7 +74,6 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 	wlr_box_transform(&orig_box, &dst_box, options->transform,
 		buffer->buffer->width, buffer->buffer->height);
 
-	int32_t dest_x, dest_y, width, height;
 	if (options->transform != WL_OUTPUT_TRANSFORM_NORMAL ||
 			orig_box.width != src_box.width ||
 			orig_box.height != src_box.height) {
@@ -131,42 +133,45 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 		// corner is back at the origin.
 		pixman_transform_translate(&transform, NULL,
 			pixman_int_to_fixed(tr_x), pixman_int_to_fixed(tr_y));
+
 		pixman_transform_translate(&transform, NULL,
 			-pixman_int_to_fixed(orig_box.x), -pixman_int_to_fixed(orig_box.y));
 		pixman_transform_scale(&transform, NULL,
 			pixman_double_to_fixed(src_box.width / (double)orig_box.width),
 			pixman_double_to_fixed(src_box.height / (double)orig_box.height));
+
+		// Apply the translation for source crop so the origin is now at the top-left of
+		// the region we're actually using.  Do this last so all the other transforms
+		// apply on top of this.
+		pixman_transform_translate(&transform, NULL,
+			pixman_int_to_fixed(src_box.x), pixman_int_to_fixed(src_box.y));
+
+		switch (options->filter_mode) {
+		case WLR_SCALE_FILTER_BILINEAR:
+			pixman_image_set_filter(texture->image, PIXMAN_FILTER_BILINEAR, NULL, 0);
+			break;
+		case WLR_SCALE_FILTER_NEAREST:
+			pixman_image_set_filter(texture->image, PIXMAN_FILTER_NEAREST, NULL, 0);
+			break;
+		}
+
 		pixman_image_set_transform(texture->image, &transform);
 
-		dest_x = dest_y = 0;
-		width = buffer->buffer->width;
-		height = buffer->buffer->height;
-	} else {
+		// We've already applied the transforms for source crop and scaling so just
+		// composite over the whole output and let the transform deal with everything.
+		pixman_image_composite32(op, texture->image, mask, buffer->image,
+			0, 0, 0, 0, 0, 0, buffer->buffer->width, buffer->buffer->height);
+
 		pixman_image_set_transform(texture->image, NULL);
-		dest_x = dst_box.x;
-		dest_y = dst_box.y;
-		width = src_box.width;
-		height = src_box.height;
+	} else {
+		// No transforms or crop needed, just a straight blit from the source
+		pixman_image_set_transform(texture->image, NULL);
+		pixman_image_composite32(op, texture->image, mask, buffer->image,
+			src_box.x, src_box.y, 0, 0, dst_box.x, dst_box.y,
+			src_box.width, src_box.height);
 	}
 
-	switch (options->filter_mode) {
-	case WLR_SCALE_FILTER_BILINEAR:
-		pixman_image_set_filter(texture->image, PIXMAN_FILTER_BILINEAR, NULL, 0);
-		break;
-	case WLR_SCALE_FILTER_NEAREST:
-		pixman_image_set_filter(texture->image, PIXMAN_FILTER_NEAREST, NULL, 0);
-		break;
-	}
-
-	pixman_op_t op = get_pixman_blending(options->blend_mode);
-
-	pixman_image_set_clip_region32(buffer->image, (pixman_region32_t *)options->clip);
-	pixman_image_composite32(op, texture->image, mask,
-		buffer->image, src_box.x, src_box.y, 0, 0, dest_x, dest_y,
-		width, height);
 	pixman_image_set_clip_region32(buffer->image, NULL);
-
-	pixman_image_set_transform(texture->image, NULL);
 
 	if (texture->buffer != NULL) {
 		wlr_buffer_end_data_ptr_access(texture->buffer);
