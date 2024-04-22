@@ -102,6 +102,22 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			break;
 		}
 
+		switch (options->transform) {
+		case WL_OUTPUT_TRANSFORM_FLIPPED:
+		case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+			tr_x = buffer->buffer->width - tr_x;
+			break;
+		case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+		case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+			tr_x = buffer->buffer->height - tr_x;
+			break;
+		case WL_OUTPUT_TRANSFORM_NORMAL:
+		case WL_OUTPUT_TRANSFORM_90:
+		case WL_OUTPUT_TRANSFORM_180:
+		case WL_OUTPUT_TRANSFORM_270:
+			break;
+		}
+
 		struct pixman_transform transform;
 		pixman_transform_init_identity(&transform);
 		pixman_transform_rotate(&transform, NULL,
@@ -110,6 +126,9 @@ static void render_pass_add_texture(struct wlr_render_pass *wlr_pass,
 			pixman_transform_scale(&transform, NULL,
 				pixman_int_to_fixed(-1), pixman_int_to_fixed(1));
 		}
+
+		// pixman rotates about the origin, translate the result so that its new top-left
+		// corner is back at the origin.
 		pixman_transform_translate(&transform, NULL,
 			pixman_int_to_fixed(tr_x), pixman_int_to_fixed(tr_y));
 		pixman_transform_translate(&transform, NULL,
